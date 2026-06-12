@@ -5,6 +5,8 @@ PointerAlignment: Left
 DerivePointerAlignment: false
 BreakBeforeBraces: Attach
 AllowShortFunctionsOnASingleLine: Inline
+AllowShortCaseLabelsOnASingleLine: true
 AllowShortIfStatementsOnASingleLine: Never
+IndentPPDirectives: BeforeHash
 SortIncludes: CaseInsensitive
 IncludeBlocks: Regroup
