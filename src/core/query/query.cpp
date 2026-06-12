@@ -360,26 +360,35 @@ std::vector<Value> QueryEngine::run(const Value& filter, const FindOptions& opti
         }
         // First indexed field with a usable constraint: range scan.
         for (const FieldConstraint& fc : constraints) {
-            btree::BTree* index = coll_.fieldIndex(fc.field);
-            if (index == nullptr || !fc.usable()) {
-                continue;
-            }
-            std::optional<RangeBounds> bounds = boundsFor(fc);
-            if (!bounds) {
-                continue;
-            }
-            explain.plan = "index_range";
-            explain.index = fc.field;
-            // Materialize matching oids first so no tree lock is held while
-            // fetching documents.
             std::vector<ObjectId> oids;
-            for (auto c = index->lowerBound({bounds->lower.data(), bounds->lower.size()});
-                 c.valid(); c.next()) {
-                if (!withinUpper(c.key(), *bounds)) {
-                    break;
+            bool planned = false;
+            {
+                // The collection lock pins the index registry (and the tree
+                // object) while oids are materialized; fetches happen after
+                // it is released.
+                std::shared_lock lock(coll_.mutex());
+                btree::BTree* index = coll_.fieldIndex(fc.field);
+                if (index == nullptr || !fc.usable()) {
+                    continue;
                 }
-                oids.push_back(btree::oidFromCompositeKey(
-                    std::vector<uint8_t>(c.key().begin(), c.key().end())));
+                std::optional<RangeBounds> bounds = boundsFor(fc);
+                if (!bounds) {
+                    continue;
+                }
+                planned = true;
+                explain.plan = "index_range";
+                explain.index = fc.field;
+                for (auto c = index->lowerBound({bounds->lower.data(), bounds->lower.size()});
+                     c.valid(); c.next()) {
+                    if (!withinUpper(c.key(), *bounds)) {
+                        break;
+                    }
+                    oids.push_back(btree::oidFromCompositeKey(
+                        std::vector<uint8_t>(c.key().begin(), c.key().end())));
+                }
+            }
+            if (!planned) {
+                continue;
             }
             for (const ObjectId& oid : oids) {
                 auto doc = coll_.fetch(oid);

@@ -1,12 +1,12 @@
 #pragma once
 
 #include "core/btree/pager.hpp"
+#include "core/shared_mutex.hpp"
 
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include "core/shared_mutex.hpp"
 #include <shared_mutex> // std::shared_lock
 #include <span>
 #include <string>

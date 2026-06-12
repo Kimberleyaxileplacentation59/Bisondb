@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/btree/btree.hpp"
+#include "core/shared_mutex.hpp"
 #include "core/store/collection.hpp"
 #include "core/value.hpp"
 
@@ -8,7 +9,6 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include "core/shared_mutex.hpp"
 #include <shared_mutex> // std::shared_lock
 #include <string>
 #include <vector>

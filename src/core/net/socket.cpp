@@ -1,13 +1,14 @@
 #include "core/net/socket.hpp"
 
+#include <cerrno>
 #include <cstring>
 #include <mutex>
 
 #if defined(BISONDB_PLATFORM_WINDOWS)
-    // clang-format off
+// clang-format off
     #include <winsock2.h>
     #include <ws2tcpip.h>
-    // clang-format on
+// clang-format on
 #else
     #include <arpa/inet.h>
     #include <fcntl.h>
@@ -27,7 +28,9 @@ namespace {
 
 using OsSocket = SOCKET;
 using SockLen = int;
-OsSocket osSock(NativeSocket s) { return static_cast<SOCKET>(s); }
+OsSocket osSock(NativeSocket s) {
+    return static_cast<SOCKET>(s);
+}
 
 // Process-wide Winsock guard: WSAStartup on first socket use, WSACleanup at
 // process exit (static destruction).
@@ -46,8 +49,12 @@ void ensureSocketsInit() {
     });
 }
 
-int lastError() { return WSAGetLastError(); }
-bool errIsTimeout(int code) { return code == WSAETIMEDOUT || code == WSAEWOULDBLOCK; }
+int lastError() {
+    return WSAGetLastError();
+}
+bool errIsTimeout(int code) {
+    return code == WSAETIMEDOUT || code == WSAEWOULDBLOCK;
+}
 bool errIsClosed(int code) {
     return code == WSAECONNRESET || code == WSAECONNABORTED || code == WSAESHUTDOWN ||
            code == WSAENOTSOCK || code == WSAEINTR;
@@ -55,11 +62,10 @@ bool errIsClosed(int code) {
 
 std::string errorMessage(int code) {
     char* buf = nullptr;
-    DWORD n = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                                 FORMAT_MESSAGE_IGNORE_INSERTS,
-                             nullptr, static_cast<DWORD>(code),
-                             MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                             reinterpret_cast<LPSTR>(&buf), 0, nullptr);
+    DWORD n = FormatMessageA(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr, static_cast<DWORD>(code), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        reinterpret_cast<LPSTR>(&buf), 0, nullptr);
     std::string msg = n > 0 ? std::string(buf, n) : "unknown error";
     if (buf != nullptr) {
         LocalFree(buf);
@@ -70,21 +76,33 @@ std::string errorMessage(int code) {
     return msg;
 }
 
-void closeNative(NativeSocket s) { closesocket(osSock(s)); }
+void closeNative(NativeSocket s) {
+    closesocket(osSock(s));
+}
 
 #else
 
 using OsSocket = int;
 using SockLen = socklen_t;
-OsSocket osSock(NativeSocket s) { return s; }
+OsSocket osSock(NativeSocket s) {
+    return s;
+}
 void ensureSocketsInit() {}
-int lastError() { return errno; }
-bool errIsTimeout(int code) { return code == EAGAIN || code == EWOULDBLOCK; }
+int lastError() {
+    return errno;
+}
+bool errIsTimeout(int code) {
+    return code == EAGAIN || code == EWOULDBLOCK;
+}
 bool errIsClosed(int code) {
     return code == ECONNRESET || code == EPIPE || code == EBADF || code == EINTR;
 }
-std::string errorMessage(int code) { return std::strerror(code); }
-void closeNative(NativeSocket s) { ::close(s); }
+std::string errorMessage(int code) {
+    return std::strerror(code);
+}
+void closeNative(NativeSocket s) {
+    ::close(s);
+}
 
 #endif
 
@@ -118,7 +136,9 @@ void setBlocking(NativeSocket s, bool blocking) {
 
 } // namespace
 
-TcpSocket::~TcpSocket() { close(); }
+TcpSocket::~TcpSocket() {
+    close();
+}
 
 TcpSocket::TcpSocket(TcpSocket&& other) noexcept : handle_(other.handle_) {
     other.handle_ = kInvalidSocket;
@@ -171,9 +191,9 @@ RecvStatus TcpSocket::recvExact(std::span<uint8_t> buf) {
             if (got == 0) {
                 return RecvStatus::Closed;
             }
-            throw NetError(NetError::Kind::Closed,
-                           "connection closed mid-message (" + std::to_string(got) + "/" +
-                               std::to_string(buf.size()) + " bytes)");
+            throw NetError(NetError::Kind::Closed, "connection closed mid-message (" +
+                                                       std::to_string(got) + "/" +
+                                                       std::to_string(buf.size()) + " bytes)");
         }
         if (n < 0) {
             throwOsError("recv");
@@ -186,8 +206,8 @@ RecvStatus TcpSocket::recvExact(std::span<uint8_t> buf) {
 void TcpSocket::setRecvTimeout(int milliseconds) {
 #if defined(BISONDB_PLATFORM_WINDOWS)
     DWORD value = static_cast<DWORD>(milliseconds);
-    if (setsockopt(osSock(handle_), SOL_SOCKET, SO_RCVTIMEO,
-                   reinterpret_cast<const char*>(&value), sizeof(value)) != 0) {
+    if (setsockopt(osSock(handle_), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&value),
+                   sizeof(value)) != 0) {
         throwOsError("setsockopt(SO_RCVTIMEO)");
     }
 #else
@@ -202,8 +222,8 @@ void TcpSocket::setRecvTimeout(int milliseconds) {
 
 void TcpSocket::setNoDelay(bool on) {
     int value = on ? 1 : 0;
-    if (setsockopt(osSock(handle_), IPPROTO_TCP, TCP_NODELAY,
-                   reinterpret_cast<const char*>(&value), sizeof(value)) != 0) {
+    if (setsockopt(osSock(handle_), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&value),
+                   sizeof(value)) != 0) {
         throwOsError("setsockopt(TCP_NODELAY)");
     }
 }
@@ -244,9 +264,8 @@ TcpListener::TcpListener(const std::string& bindAddress, uint16_t port, int back
     if (bind(osSock(handle_), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
         int code = lastError();
         close();
-        throw NetError(NetError::Kind::OsError, "bind " + bindAddress + ":" +
-                                                    std::to_string(port) + ": " +
-                                                    errorMessage(code));
+        throw NetError(NetError::Kind::OsError, "bind " + bindAddress + ":" + std::to_string(port) +
+                                                    ": " + errorMessage(code));
     }
     if (listen(osSock(handle_), backlog) != 0) {
         int code = lastError();
@@ -259,7 +278,9 @@ TcpListener::TcpListener(const std::string& bindAddress, uint16_t port, int back
     port_ = ntohs(bound.sin_port);
 }
 
-TcpListener::~TcpListener() { close(); }
+TcpListener::~TcpListener() {
+    close();
+}
 
 void TcpListener::close() noexcept {
     if (handle_ != kInvalidSocket) {
@@ -323,8 +344,7 @@ TcpSocket connectTcp(const std::string& host, uint16_t port, int timeoutMs) {
                 timeval tv{};
                 tv.tv_sec = timeoutMs / 1000;
                 tv.tv_usec = (timeoutMs % 1000) * 1000;
-                int ready =
-                    select(static_cast<int>(raw) + 1, nullptr, &writeSet, nullptr, &tv);
+                int ready = select(static_cast<int>(raw) + 1, nullptr, &writeSet, nullptr, &tv);
                 if (ready <= 0) {
                     throw NetError(NetError::Kind::Timeout,
                                    "connect timed out after " + std::to_string(timeoutMs) + "ms");

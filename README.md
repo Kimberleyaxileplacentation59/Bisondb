@@ -4,9 +4,10 @@ BisonDB is a document database with a BSON storage engine, inspired by MongoDB. 
 in C++20 and targets Windows as its primary development platform, with Linux support via CI.
 `bisondb_core` provides a BSON value model, a hardened BSON decoder/encoder, MongoDB Extended
 JSON v2 reading/writing, an append-only collection store, a hand-written on-disk B+Tree
-(no `std::map`, no third-party storage libraries), and a query engine with index-aware
-planning. The `bisonc` CLI converts between BSON and JSON and runs queries against database
-directories. No networking code exists yet.
+(no `std::map`, no third-party storage libraries), a query engine with index-aware planning,
+and a hand-written portable socket layer (Winsock2/POSIX, no Asio). `bisond` is the network
+daemon speaking a framed-BSON protocol ([docs/protocol.md](docs/protocol.md)), with a client
+library and remote mode in the `bisonc` CLI.
 
 ## Building
 
@@ -88,6 +89,36 @@ Filters support `{field: literal}`, `$eq/$ne/$gt/$gte/$lt/$lte/$in`, `$and`/`$or
 paths. The planner uses an index for a single equality or range on an indexed field (and `_id`
 point lookups); everything else falls back to a full scan. Indexed plans always re-check the
 complete filter on each fetched document.
+
+## bisond server quickstart
+
+> **bisond has NO authentication and NO TLS.** It binds to `127.0.0.1` by default;
+> binding to any other address exposes the full database to the network and is at the
+> operator's own risk.
+
+Terminal 1 — start the server:
+
+```bat
+bisond --dir data\db --port 27027
+```
+
+Terminal 2 — talk to it with `bisonc` (any `db` subcommand plus `--connect host:port`):
+
+```bat
+bisonc ping --connect 127.0.0.1:27027
+bisonc db import - zips zips.bson --connect 127.0.0.1:27027
+bisonc db create-index - zips pop --connect 127.0.0.1:27027
+bisonc db find - zips "{\"pop\": {\"$gte\": 100000}}" --explain --connect 127.0.0.1:27027
+bisonc status --connect 127.0.0.1:27027
+```
+
+(The `<dbdir>` positional argument is ignored in remote mode — pass `-`.) The wire
+protocol is one length-prefixed BSON document per message; `docs/protocol.md` documents
+the framing, the command set, error codes, and the find-truncation contract completely
+enough to write a third-party client. `find` responses cap at 16 MiB; larger result sets
+return `truncated: true` with a `skipNext` cursor-substitute that the bundled client
+follows automatically. Ctrl-C performs a graceful shutdown (drain, sync, exit 0);
+`shutdown` is also available as a command from loopback connections.
 
 ## B+Tree internals
 
