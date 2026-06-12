@@ -42,8 +42,7 @@ bool Database::collectionExists(const std::string& name) {
         return false;
     }
     std::lock_guard lock(mutex_);
-    return collections_.contains(name) ||
-           fs::exists(fs::path(dbdir_) / (name + ".log"));
+    return collections_.contains(name) || fs::exists(fs::path(dbdir_) / (name + ".log"));
 }
 
 bool Database::createCollection(const std::string& name) {

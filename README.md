@@ -120,6 +120,16 @@ return `truncated: true` with a `skipNext` cursor-substitute that the bundled cl
 follows automatically. Ctrl-C performs a graceful shutdown (drain, sync, exit 0);
 `shutdown` is also available as a command from loopback connections.
 
+## Prairie — desktop GUI
+
+**BisonDB Prairie** is a MongoDB-Compass-style desktop client (Tauri 2 + React) living in the
+sibling `../Prairie/` folder with its own bun/cargo toolchain — connect to a running `bisond`
+or open a local database folder (a bundled bisond sidecar is spawned automatically). Document
+browser with filters and explain plans, insert/edit/delete with confirmations, index
+management, and .bson/.json/.jsonl import/export. See `../Prairie/README.md` for build steps.
+
+![Prairie screenshot placeholder](docs/prairie-screenshot.png)
+
 ## bisonsh — the interactive shell
 
 Terminal 1: `bisond --dir data\db`. Terminal 2:

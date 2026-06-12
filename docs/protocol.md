@@ -45,7 +45,7 @@ Collection names must match `[A-Za-z0-9_][A-Za-z0-9_-]{0,127}`.
 | Command | Arguments | Success payload |
 |---|---|---|
 | `ping` | — | `{}` |
-| `serverStatus` | — | `name, version, uptimeSec, connectionsCurrent, opCounters{...}` |
+| `serverStatus` | — | `name, version, protocolVersion (int32, currently 1), uptimeSec, connectionsCurrent, opCounters{...}` |
 | `listCollections` | — | `collections: [string]` |
 | `dropCollection` | `coll` | `dropped: bool` |
 | `insert` | `coll, documents: [doc, ...]` | `insertedIds: [ObjectId], insertedCount` |

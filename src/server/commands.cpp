@@ -194,6 +194,7 @@ Value cmdServerStatus(Server& server, const Document&) {
     return okResponse(
         Document{{"name", Value("BisonDB")},
                  {"version", Value(std::string(version()))},
+                 {"protocolVersion", Value(int32_t{1})},
                  {"uptimeSec", Value(static_cast<int64_t>(uptime))},
                  {"connectionsCurrent",
                   Value(static_cast<int64_t>(server.stats().connectionsCurrent.load()))},
@@ -278,11 +279,11 @@ Value dispatchCommand(Server& server, const Value& request, const net::TcpSocket
                         bytes += entry.file_size(ec);
                     }
                 }
-                collections.push_back(Value(Document{
-                    {"name", Value(name)},
-                    {"count", Value(static_cast<int64_t>(coll.count()))},
-                    {"fileSizeBytes", Value(static_cast<int64_t>(bytes))},
-                    {"indexes", Value(std::move(indexes))}}));
+                collections.push_back(
+                    Value(Document{{"name", Value(name)},
+                                   {"count", Value(static_cast<int64_t>(coll.count()))},
+                                   {"fileSizeBytes", Value(static_cast<int64_t>(bytes))},
+                                   {"indexes", Value(std::move(indexes))}}));
             }
             return okResponse(Document{{"collections", Value(std::move(collections))}});
         }
