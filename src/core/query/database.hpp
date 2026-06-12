@@ -25,6 +25,13 @@ class Database {
     // Opens (or creates) a collection; throws StoreError for invalid names.
     IndexedCollection& collection(const std::string& name);
 
+    // Explicitly creates an empty collection. Returns false when it already
+    // exists (on disk or open). Throws StoreError for invalid names.
+    bool createCollection(const std::string& name);
+
+    // True when the collection exists on disk or is open.
+    bool collectionExists(const std::string& name);
+
     // Collections present on disk or already open.
     std::vector<std::string> listCollections();
 

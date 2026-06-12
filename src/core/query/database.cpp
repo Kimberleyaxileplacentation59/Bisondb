@@ -37,6 +37,26 @@ IndexedCollection& Database::collection(const std::string& name) {
     return *it->second;
 }
 
+bool Database::collectionExists(const std::string& name) {
+    if (!isValidCollectionName(name)) {
+        return false;
+    }
+    std::lock_guard lock(mutex_);
+    return collections_.contains(name) ||
+           fs::exists(fs::path(dbdir_) / (name + ".log"));
+}
+
+bool Database::createCollection(const std::string& name) {
+    if (!isValidCollectionName(name)) {
+        throw store::StoreError("invalid collection name: \"" + name + "\"");
+    }
+    if (collectionExists(name)) {
+        return false;
+    }
+    collection(name); // opening creates the files
+    return true;
+}
+
 std::vector<std::string> Database::listCollections() {
     std::lock_guard lock(mutex_);
     std::map<std::string, bool> names;
