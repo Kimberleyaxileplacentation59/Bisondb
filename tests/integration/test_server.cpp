@@ -94,6 +94,42 @@ TEST_CASE("end-to-end CRUD over the wire", "[integration]") {
     REQUIRE(collections == std::vector<std::string>{"things"});
 }
 
+TEST_CASE("createCollection and dbStats", "[integration]") {
+    ServerFixture fx("stats");
+    BisonClient c = fx.client();
+
+    REQUIRE(c.createCollection("empty"));
+    REQUIRE_FALSE(c.createCollection("empty")); // already exists
+    c.insert("filled", {parseJson(R"({"v": 1})"), parseJson(R"({"v": 2})")});
+    c.createIndex("filled", "v");
+
+    Value stats = c.dbStats();
+    const Array& colls = stats.asDocument().find("collections")->asArray();
+    REQUIRE(colls.size() == 2);
+    for (const Value& entry : colls) {
+        const Document& d = entry.asDocument();
+        std::string name = d.find("name")->get<std::string>();
+        int64_t count = d.find("count")->get<int64_t>();
+        REQUIRE(d.find("fileSizeBytes")->get<int64_t>() > 0);
+        const Array& indexes = d.find("indexes")->asArray();
+        if (name == "empty") {
+            REQUIRE(count == 0);
+            REQUIRE(indexes.size() == 1); // _id only
+        } else {
+            REQUIRE(name == "filled");
+            REQUIRE(count == 2);
+            REQUIRE(indexes.size() == 2); // _id + v
+        }
+    }
+    // Invalid names are rejected.
+    try {
+        c.createCollection("../evil");
+        FAIL("expected ServerError");
+    } catch (const client::ServerError& e) {
+        REQUIRE(e.code() == "BadRequest");
+    }
+}
+
 TEST_CASE("error responses carry codes and the connection stays usable", "[integration]") {
     ServerFixture fx("errors");
     BisonClient c = fx.client();
