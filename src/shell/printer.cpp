@@ -136,12 +136,17 @@ bool stdinIsTty() {
     return _isatty(_fileno(stdin)) != 0;
 }
 
-void enableVtProcessing() {
+bool enableVtProcessing() {
     HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD mode = 0;
     if (handle != INVALID_HANDLE_VALUE && GetConsoleMode(handle, &mode)) {
-        SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+        return SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
     }
+    return false;
+}
+
+bool enableUtf8Output() {
+    return SetConsoleOutputCP(CP_UTF8) != 0;
 }
 
 std::string homeDirectory() {
@@ -157,7 +162,12 @@ bool stdoutIsTty() {
 bool stdinIsTty() {
     return isatty(0) != 0;
 }
-void enableVtProcessing() {}
+bool enableVtProcessing() {
+    return true;
+}
+bool enableUtf8Output() {
+    return true;
+}
 
 std::string homeDirectory() {
     const char* home = std::getenv("HOME");

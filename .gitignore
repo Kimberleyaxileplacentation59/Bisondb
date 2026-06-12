@@ -44,3 +44,6 @@ compile_commands.json
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# Runtime database directories
+data/

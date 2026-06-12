@@ -1,4 +1,5 @@
 #include "core/version.hpp"
+#include "shell/banner.hpp"
 #include "shell/printer.hpp"
 #include "shell/repl.hpp"
 
@@ -10,7 +11,7 @@ namespace {
 
 int usage() {
     std::cerr << "bisonsh " << bisondb::version() << " - BisonDB interactive shell\n\n"
-              << "Usage: bisonsh [--connect host:port] [--no-color]\n"
+              << "Usage: bisonsh [--connect host:port] [--no-color] [--no-banner]\n"
               << "               [--eval '<stmt>[; <stmt>...]'] [-f script.bsh]\n\n"
               << "Default server: 127.0.0.1:27027. With --eval, -f, or piped stdin the\n"
               << "shell runs non-interactively and exits non-zero on the first error.\n";
@@ -25,6 +26,7 @@ int main(int argc, char** argv) {
     std::string evalText;
     std::string scriptPath;
     bool noColor = false;
+    bool noBanner = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -46,6 +48,8 @@ int main(int argc, char** argv) {
             config.port = static_cast<uint16_t>(std::stoi(endpoint.substr(colon + 1)));
         } else if (arg == "--no-color") {
             noColor = true;
+        } else if (arg == "--no-banner") {
+            noBanner = true;
         } else if (arg == "--eval") {
             evalText = next();
         } else if (arg == "-f") {
@@ -61,12 +65,16 @@ int main(int argc, char** argv) {
 
     bool scripted = !evalText.empty() || !scriptPath.empty() || !stdinIsTty();
     config.interactive = !scripted;
-    config.color = !noColor && !scripted && stdoutIsTty();
-    if (config.color) {
-        enableVtProcessing();
-    }
+    bool utf8Ok = enableUtf8Output();
+    ColorProbe probe = systemProbe(noColor);
+    ColorMode mode = scripted ? ColorMode::None : detectColorMode(probe);
+    config.color = mode != ColorMode::None;
     if (config.interactive) {
         config.historyPath = homeDirectory() + "/.bisonsh_history";
+        if (!noBanner && stdoutIsTty()) {
+            config.bannerText =
+                renderBanner(mode, bisondb::version(), "shell", wantAsciiBanner(probe, utf8Ok));
+        }
     }
 
     try {

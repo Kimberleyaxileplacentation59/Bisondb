@@ -28,7 +28,11 @@ std::string stripAnsi(const std::string& text);
 // Console shim (the only platform-specific code in the shell).
 bool stdoutIsTty();
 bool stdinIsTty();
-void enableVtProcessing(); // no-op on POSIX
+// Returns whether ANSI/VT sequences will be honored (always true on POSIX).
+bool enableVtProcessing();
+// Switches the console to UTF-8 output (SetConsoleOutputCP on Windows;
+// no-op true on POSIX). False means the caller should fall back to ASCII.
+bool enableUtf8Output();
 std::string homeDirectory();
 
 } // namespace bisondb::shell

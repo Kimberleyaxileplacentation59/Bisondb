@@ -1,6 +1,8 @@
 #include "core/platform.hpp"
 #include "core/version.hpp"
 #include "server/server.hpp"
+#include "shell/banner.hpp"
+#include "shell/printer.hpp"
 
 #include <csignal>
 #include <cstdlib>
@@ -93,6 +95,14 @@ int main(int argc, char** argv) {
     if (config.bind != "127.0.0.1" && !config.quiet) {
         std::cerr << "WARNING: binding to " << config.bind
                   << " exposes the database without authentication or TLS.\n";
+    }
+
+    if (!config.quiet) {
+        using namespace bisondb::shell;
+        bool utf8Ok = enableUtf8Output();
+        ColorProbe probe = systemProbe(/*noColorFlag=*/false);
+        std::cerr << renderBanner(detectColorMode(probe), bisondb::version(), "server",
+                                  wantAsciiBanner(probe, utf8Ok));
     }
 
     try {

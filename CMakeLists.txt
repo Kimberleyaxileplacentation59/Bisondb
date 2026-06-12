@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(BisonDB LANGUAGES CXX VERSION 0.1.0)
+project(BisonDB LANGUAGES CXX VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,6 +19,11 @@ if(MSVC)
 else()
     target_compile_options(bisondb_warnings INTERFACE
         -Wall -Wextra -Wpedantic -Werror)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # GCC's -Wmaybe-uninitialized produces well-known false positives in
+        # std::variant/vector move paths at -O2/-O3.
+        target_compile_options(bisondb_warnings INTERFACE -Wno-maybe-uninitialized)
+    endif()
 endif()
 
 # ── Catch2 ────────────────────────────────────────────────────────────────────
@@ -66,13 +71,14 @@ target_link_libraries(bisondb_server PRIVATE bisondb_warnings)
 add_executable(bisond
     src/server/main.cpp
 )
-target_link_libraries(bisond PRIVATE bisondb_server bisondb_warnings)
+target_link_libraries(bisond PRIVATE bisondb_server bisondb_shell bisondb_warnings)
 
 # ── bisonsh (interactive shell) ───────────────────────────────────────────────
 add_library(bisondb_shell STATIC
     src/shell/parser.cpp
     src/shell/printer.cpp
     src/shell/repl.cpp
+    src/shell/banner.cpp
 )
 target_link_libraries(bisondb_shell PUBLIC bisondb_core)
 target_link_libraries(bisondb_shell PRIVATE bisondb_warnings)
@@ -111,6 +117,7 @@ add_executable(bisondb_tests
     tests/test_query.cpp
     tests/test_concurrency.cpp
     tests/test_net.cpp
+    tests/test_banner.cpp
     tests/test_json_relaxed.cpp
     tests/test_shell_parser.cpp
     tests/test_shell_printer.cpp

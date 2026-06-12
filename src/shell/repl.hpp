@@ -19,6 +19,9 @@ struct ShellConfig {
     std::string historyPath; // empty = history disabled
     std::size_t pageSize = 100;
     int connectTimeoutMs = 5000;
+    // Pre-rendered startup banner (see banner.hpp); printed once at the top
+    // of runInteractive. Empty = no banner (scripted modes never set it).
+    std::string bannerText;
 };
 
 // History persistence helpers (exposed for tests). The file holds one

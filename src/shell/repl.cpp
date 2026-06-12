@@ -277,6 +277,9 @@ void Shell::banner() {
 }
 
 int Shell::runInteractive() {
+    if (!config_.bannerText.empty()) {
+        out_ << config_.bannerText;
+    }
     banner();
     std::string pending;
     while (!exitRequested_) {

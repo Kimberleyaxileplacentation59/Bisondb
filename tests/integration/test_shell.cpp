@@ -2,6 +2,7 @@
 // driven through stringstreams (scripted mode, --eval, history).
 
 #include "server/server.hpp"
+#include "shell/banner.hpp"
 #include "shell/printer.hpp"
 #include "shell/repl.hpp"
 
@@ -181,6 +182,37 @@ TEST_CASE("server errors print E[code] and the session continues", "[integration
                                " {_id: {$oid: '507f1f77bcf86cd799439011'}}])"));
     REQUIRE_THAT(err.str(), ContainsSubstring("E[DuplicateKey]"));
     REQUIRE(shell.executeStatement("db.c.count()"));
+}
+
+TEST_CASE("startup banner shows once interactively, never in scripted modes",
+          "[integration][shell]") {
+    ShellFixture fx("banner");
+    std::string bannerText = renderBanner(ColorMode::None, "0.1.0", "shell");
+
+    SECTION("interactive: banner appears exactly once, before the connect line") {
+        std::istringstream in("exit\n");
+        std::ostringstream out;
+        std::ostringstream err;
+        ShellConfig cfg = fx.config();
+        cfg.interactive = true;
+        cfg.bannerText = bannerText;
+        Shell shell(cfg, in, out, err);
+        REQUIRE(shell.runInteractive() == 0);
+        std::string text = out.str();
+        std::size_t first = text.find("the prairie is open");
+        REQUIRE(first != std::string::npos);
+        REQUIRE(text.find("the prairie is open", first + 1) == std::string::npos);
+        REQUIRE(first < text.find("BisonDB")); // banner precedes the connect line
+    }
+    SECTION("eval/script modes never print it (bannerText unset by main)") {
+        std::istringstream in;
+        std::ostringstream out;
+        std::ostringstream err;
+        Shell shell(fx.config(), in, out, err);
+        REQUIRE(shell.evalString("db.c.count()") == 0);
+        REQUIRE(out.str().find("prairie is open") == std::string::npos);
+        REQUIRE(out.str().find("█") == std::string::npos); // no block chars
+    }
 }
 
 TEST_CASE("history persists, reloads, and caps", "[integration][shell]") {
