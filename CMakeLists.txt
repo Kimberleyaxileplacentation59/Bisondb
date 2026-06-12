@@ -38,6 +38,9 @@ add_library(bisondb_core STATIC
     src/core/decimal128.cpp
     src/core/json_writer.cpp
     src/core/json_parser.cpp
+    src/core/btree/pager.cpp
+    src/core/btree/key_codec.cpp
+    src/core/btree/btree.cpp
 )
 target_include_directories(bisondb_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
@@ -62,6 +65,9 @@ add_executable(bisondb_tests
     tests/test_roundtrip.cpp
     tests/test_corpus.cpp
     tests/test_fixtures.cpp
+    tests/test_pager.cpp
+    tests/test_key_codec.cpp
+    tests/test_btree.cpp
 )
 target_link_libraries(bisondb_tests PRIVATE bisondb_core bisondb_warnings Catch2::Catch2WithMain)
 target_compile_definitions(bisondb_tests PRIVATE
