@@ -6,7 +6,8 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <shared_mutex>
+#include "core/shared_mutex.hpp"
+#include <shared_mutex> // std::shared_lock
 #include <span>
 #include <string>
 #include <vector>
@@ -66,13 +67,13 @@ class BTree {
 
       private:
         friend class BTree;
-        Cursor(BTree& tree, std::shared_lock<std::shared_mutex> lock)
+        Cursor(BTree& tree, std::shared_lock<SharedMutex> lock)
             : tree_(&tree), lock_(std::move(lock)) {}
         void loadCurrent();
         void skipEmptyLeaves();
 
         BTree* tree_;
-        std::shared_lock<std::shared_mutex> lock_;
+        std::shared_lock<SharedMutex> lock_;
         std::vector<uint8_t> page_;
         PageId leaf_ = 0;
         uint16_t slot_ = 0;
@@ -107,7 +108,7 @@ class BTree {
     PageId descendRightmostLeaf(PageId start);
 
     Pager pager_;
-    std::shared_mutex mutex_;
+    SharedMutex mutex_;
 };
 
 } // namespace bisondb::btree

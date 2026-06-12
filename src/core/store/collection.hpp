@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -27,8 +28,9 @@ class StoreError : public Error {
 //
 // This class is deliberately dumb: it appends, reads records at offsets, and
 // replays. Oid -> offset mapping lives in the _id B+Tree owned by the index
-// layer; the replay path exists to (re)build that index. Not thread-safe on
-// its own — the owning IndexedCollection serializes access.
+// layer; the replay path exists to (re)build that index. File access is
+// internally serialized: the single FILE* cursor (fseek + fread pairs) must
+// not interleave even between logically concurrent readers.
 class CollectionLog {
   public:
     CollectionLog(const std::string& dbdir, const std::string& name);
@@ -66,8 +68,11 @@ class CollectionLog {
     const std::string& path() const noexcept { return path_; }
 
   private:
+    Value readDocumentAtLocked(uint64_t offset);
+
     std::string path_;
     std::FILE* file_ = nullptr;
+    std::mutex ioMutex_;
 };
 
 // Extracts the _id ObjectId from a decoded document; throws StoreError when

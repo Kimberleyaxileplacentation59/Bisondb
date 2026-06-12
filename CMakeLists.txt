@@ -46,7 +46,27 @@ add_library(bisondb_core STATIC
     src/core/store/collection.cpp
     src/core/query/index_manager.cpp
     src/core/query/query.cpp
+    src/core/net/socket.cpp
+    src/core/query/database.cpp
+    src/server/protocol.cpp
+    src/client/client.cpp
 )
+if(WIN32)
+    target_link_libraries(bisondb_core PUBLIC ws2_32)
+endif()
+
+# ── bisondb_server (server library; bisond is a thin wrapper) ─────────────────
+add_library(bisondb_server STATIC
+    src/server/server.cpp
+    src/server/commands.cpp
+)
+target_link_libraries(bisondb_server PUBLIC bisondb_core)
+target_link_libraries(bisondb_server PRIVATE bisondb_warnings)
+
+add_executable(bisond
+    src/server/main.cpp
+)
+target_link_libraries(bisond PRIVATE bisondb_server bisondb_warnings)
 target_include_directories(bisondb_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
     $<INSTALL_INTERFACE:include>
@@ -76,9 +96,11 @@ add_executable(bisondb_tests
     tests/test_matcher.cpp
     tests/test_query.cpp
     tests/test_concurrency.cpp
+    tests/test_net.cpp
+    tests/integration/test_server.cpp
 )
 find_package(Threads REQUIRED)
-target_link_libraries(bisondb_tests PRIVATE Threads::Threads)
+target_link_libraries(bisondb_tests PRIVATE Threads::Threads bisondb_server)
 target_link_libraries(bisondb_tests PRIVATE bisondb_core bisondb_warnings Catch2::Catch2WithMain)
 target_compile_definitions(bisondb_tests PRIVATE
     BISONDB_TESTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"

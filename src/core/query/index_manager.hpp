@@ -8,7 +8,8 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <shared_mutex>
+#include "core/shared_mutex.hpp"
+#include <shared_mutex> // std::shared_lock
 #include <string>
 #include <vector>
 
@@ -67,7 +68,7 @@ class IndexedCollection {
 
     void sync();
 
-    std::shared_mutex& mutex() { return mutex_; }
+    SharedMutex& mutex() { return mutex_; }
 
   private:
     std::string indexPath(const std::string& field) const;
@@ -85,7 +86,7 @@ class IndexedCollection {
     std::unique_ptr<btree::BTree> idIndex_;
     std::map<std::string, std::unique_ptr<btree::BTree>> fieldIndexes_;
     std::map<std::string, IndexBuildStats> indexStats_;
-    std::shared_mutex mutex_;
+    SharedMutex mutex_;
 
     friend class QueryEngine;
 };

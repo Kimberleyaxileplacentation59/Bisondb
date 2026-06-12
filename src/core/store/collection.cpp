@@ -76,6 +76,7 @@ CollectionLog::~CollectionLog() {
 }
 
 uint64_t CollectionLog::appendPut(const std::vector<uint8_t>& bsonDoc) {
+    std::lock_guard lock(ioMutex_);
     std::fseek(file_, 0, SEEK_END);
     uint64_t offset = tellPos(file_);
     uint8_t header[kRecordHeader];
@@ -93,6 +94,7 @@ uint64_t CollectionLog::appendPut(const std::vector<uint8_t>& bsonDoc) {
 }
 
 void CollectionLog::appendDelete(const ObjectId& oid) {
+    std::lock_guard lock(ioMutex_);
     std::fseek(file_, 0, SEEK_END);
     uint8_t rec[kRecordHeader + 12];
     rec[0] = kDel;
@@ -107,6 +109,11 @@ void CollectionLog::appendDelete(const ObjectId& oid) {
 }
 
 Value CollectionLog::readDocumentAt(uint64_t offset) {
+    std::lock_guard lock(ioMutex_);
+    return readDocumentAtLocked(offset);
+}
+
+Value CollectionLog::readDocumentAtLocked(uint64_t offset) {
     seekTo(file_, offset);
     uint8_t header[kRecordHeader];
     if (std::fread(header, 1, kRecordHeader, file_) != kRecordHeader || header[0] != kPut) {
@@ -123,6 +130,7 @@ Value CollectionLog::readDocumentAt(uint64_t offset) {
 }
 
 void CollectionLog::replay(const ReplayFn& fn) {
+    std::lock_guard lock(ioMutex_);
     std::fseek(file_, 0, SEEK_END);
     uint64_t end = tellPos(file_);
     uint64_t pos = 0;
@@ -172,16 +180,19 @@ std::unordered_map<std::string, uint64_t> CollectionLog::buildOffsetMap() {
 }
 
 void CollectionLog::sync() {
+    std::lock_guard lock(ioMutex_);
     fsyncFile(file_);
 }
 
 uint64_t CollectionLog::sizeBytes() {
+    std::lock_guard lock(ioMutex_);
     std::fseek(file_, 0, SEEK_END);
     return tellPos(file_);
 }
 
 std::unordered_map<uint64_t, uint64_t>
 CollectionLog::compact(const std::vector<uint64_t>& liveOffsets) {
+    std::lock_guard lock(ioMutex_);
     std::string tmpPath = path_ + ".compact";
     std::FILE* out = std::fopen(tmpPath.c_str(), "w+b");
     if (out == nullptr) {
