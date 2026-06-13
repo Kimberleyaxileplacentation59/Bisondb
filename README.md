@@ -102,6 +102,11 @@ Terminal 1 — start the server:
 bisond --dir data\db --port 27027
 ```
 
+![bisond startup banner and structured request log](docs/bisond-banner.png)
+
+The startup banner is followed by structured per-request logs (`conn`, `cmd`, `durationMs`);
+`--quiet` suppresses both.
+
 Terminal 2 — talk to it with `bisonc` (any `db` subcommand plus `--connect host:port`):
 
 ```bat
@@ -275,5 +280,5 @@ BisonDB (the engine — `bisond`, `bisonsh`, `bisonc`, and the `bisondb_core` li
 licensed under the **GNU General Public License v3.0** — see [LICENSE](LICENSE).
 
 The [Prairie](https://github.com/Abdullah-Masood-05/Prairie) desktop GUI is a separate
-project under the MIT license; it communicates with `bisond` over the network protocol (and
-bundles it as a sidecar process), so the two licenses do not conflict.
+project, also licensed under the **GNU General Public License v3.0** — the whole project is
+GPLv3.
