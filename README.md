@@ -4,8 +4,13 @@
   <p><strong>A document database built from scratch — BSON storage, hand-written B+Trees, and a Compass-style GUI.</strong></p>
   <p>
     <a href="https://github.com/Abdullah-Masood-05/Bisondb/actions/workflows/ci.yml"><img src="https://github.com/Abdullah-Masood-05/Bisondb/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue.svg" alt="License: GPLv3" /></a>
-    <img src="https://img.shields.io/badge/C%2B%2B-20-00599C.svg" alt="C++20" />
+    <a href="https://github.com/Abdullah-Masood-05/Bisondb/releases/latest"><img src="https://img.shields.io/github/v/release/Abdullah-Masood-05/Bisondb?style=flat-square" alt="Latest release" /></a>
+    <a href="https://github.com/Abdullah-Masood-05/Bisondb/commits"><img src="https://img.shields.io/github/last-commit/Abdullah-Masood-05/Bisondb?style=flat-square" alt="Last commit" /></a>
+    <a href="https://github.com/Abdullah-Masood-05/Bisondb/stargazers"><img src="https://img.shields.io/github/stars/Abdullah-Masood-05/Bisondb?style=flat-square" alt="Stars" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/Abdullah-Masood-05/Bisondb?style=flat-square" alt="License" /></a>
+    <img src="https://img.shields.io/badge/C%2B%2B-20-00599C?style=flat-square&logo=cplusplus&logoColor=white" alt="C++20" />
+    <img src="https://img.shields.io/badge/CMake-3.21%2B-064F8C?style=flat-square&logo=cmake&logoColor=white" alt="CMake 3.21+" />
+    <img src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-555?style=flat-square" alt="Platforms: Windows | Linux" />
   </p>
   <p>
     <a href="https://abdullah-masood-05.github.io/bisondb-site/">Documentation</a> ·
