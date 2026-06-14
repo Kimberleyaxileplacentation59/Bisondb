@@ -107,8 +107,8 @@ Shell::Shell(ShellConfig config, std::istream& in, std::ostream& out, std::ostre
 
 client::BisonClient& Shell::client() {
     if (!client_) {
-        client_ =
-            client::BisonClient::connect(config_.host, config_.port, config_.connectTimeoutMs);
+        client_ = client::BisonClient::connect(config_.host, config_.port, config_.tls,
+                                               config_.connectTimeoutMs);
     }
     if (!autoAuthDone_) {
         autoAuthDone_ = true; // attempt once; failures surface to the caller
@@ -229,6 +229,9 @@ bool Shell::executeStatement(const std::string& statement) {
             err_ << (config_.color ? ansi::kRed : "") << "E[Network] " << e.what()
                  << (config_.color ? ansi::kReset : "") << "\n"
                  << "  is bisond running at " << config_.host << ":" << config_.port << "?\n";
+            if (!config_.tls.enabled) {
+                err_ << "  if the server uses TLS, reconnect with --tls.\n";
+            }
             dropClient();
             return false;
         } catch (const client::AuthError& e) {
@@ -479,13 +482,25 @@ void Shell::banner() {
             out_ << "  (as " << client_->currentUser() << ")";
         }
         out_ << "\n";
-        // Surface the security posture: auth state + the loud no-TLS warning.
+        // Surface the security posture: a transport lock indicator + auth state.
         if (const Value* sec = d.find("security"); sec && sec->is<Document>()) {
             const Document& s = sec->asDocument();
             bool auth = s.find("auth") && s.find("auth")->is<bool>() && s.find("auth")->get<bool>();
-            out_ << (config_.color ? ansi::kDim : "")
+            const char* transport;
+            const char* tColor = "";
+            if (!client_ || !client_->isTls()) {
+                transport = "transport: NOT encrypted (no TLS) - add --tls";
+                tColor = config_.color ? ansi::kRed : "";
+            } else if (client_->tlsVerified()) {
+                transport = "transport: TLS, verified";
+                tColor = config_.color ? ansi::kDim : "";
+            } else {
+                transport = "transport: TLS, ENCRYPTED but UNVERIFIED (--tls-insecure)";
+                tColor = config_.color ? ansi::kRed : "";
+            }
+            out_ << tColor << transport << (config_.color ? ansi::kReset : "") << "\n"
+                 << (config_.color ? ansi::kDim : "")
                  << (auth ? "auth: enabled" : "auth: DISABLED (--no-auth)")
-                 << " · transport: NOT encrypted (no TLS yet)"
                  << (config_.color ? ansi::kReset : "") << "\n";
         }
     } catch (const client::AuthError& e) {

@@ -30,6 +30,9 @@ struct ShellConfig {
     std::string username;
     std::string password;
     std::string token;
+
+    // TLS transport options (--tls / --tls-ca / --tls-pin / --tls-insecure).
+    client::TlsOptions tls;
 };
 
 // History persistence helpers (exposed for tests). The file holds one

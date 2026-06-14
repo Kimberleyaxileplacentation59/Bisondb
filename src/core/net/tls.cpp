@@ -24,7 +24,12 @@
     #endif
     #include <windows.h>
     // <wincrypt.h> after <windows.h>
+    #include <fstream>
     #include <wincrypt.h>
+#else
+    #include <fcntl.h>
+    #include <sys/stat.h>
+    #include <unistd.h>
 #endif
 
 namespace bisondb::net {
@@ -537,6 +542,33 @@ CertKeyPem generateSelfSigned(const std::string& cn, int days) {
     std::string keyPem(pemBuf);
 
     return CertKeyPem{certPem, keyPem};
+}
+
+void writePrivateKeyFile(const std::string& path, const std::string& keyPem) {
+#if defined(BISONDB_PLATFORM_WINDOWS)
+    // NTFS inherits ACLs from the directory; tightening them needs the Win32
+    // security APIs. Best-effort here: just write the file.
+    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    if (!f) {
+        throw TlsError(TlsError::Kind::Config, "cannot write key file: " + path);
+    }
+    f << keyPem;
+    if (!f) {
+        throw TlsError(TlsError::Kind::Config, "failed writing key file: " + path);
+    }
+#else
+    // Create with 0600 from the start so the key is never world/group readable.
+    int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (fd < 0) {
+        throw TlsError(TlsError::Kind::Config, "cannot write key file: " + path);
+    }
+    ssize_t wrote = ::write(fd, keyPem.data(), keyPem.size());
+    ::fchmod(fd, S_IRUSR | S_IWUSR); // enforce even if the file pre-existed
+    ::close(fd);
+    if (wrote != static_cast<ssize_t>(keyPem.size())) {
+        throw TlsError(TlsError::Kind::Config, "short write to key file: " + path);
+    }
+#endif
 }
 
 std::string certFingerprintSha256(const std::string& certPem) {

@@ -4,6 +4,7 @@
 #include "core/bson_encoder.hpp"
 #include "core/json_parser.hpp"
 #include "core/json_writer.hpp"
+#include "core/net/tls.hpp"
 #include "core/platform.hpp"
 #include "core/query/index_manager.hpp"
 #include "core/query/query.hpp"
@@ -12,6 +13,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -55,6 +57,8 @@ int usage(std::ostream& os) {
        << "\n"
        << "  bisonc auth create-admin --dir <dbdir> --username <u>\n"
        << "      Create an admin offline (password from BISONDB_ADMIN_PASSWORD or prompt).\n"
+       << "  bisonc tls gen-cert --out-dir <dir> [--cn localhost] [--days 365]\n"
+       << "      Write cert.pem + key.pem for `bisond --tls` (key file is 0600).\n"
        << "\n"
        << "Every db subcommand accepts --connect host:port to talk to a running bisond\n"
        << "instead of opening <dbdir> locally (the dbdir argument is then ignored).\n"
@@ -267,28 +271,74 @@ std::optional<std::string> extractFlag(std::vector<char*>& args, const char* fla
     return std::nullopt;
 }
 
-// Connects to a remote bisond, authenticating when credentials are supplied.
-// Passwords come from --username (prompted, or $BISONDB_PASSWORD) or a token
-// (--token or $BISONDB_TOKEN) — never from a CLI argument.
+// Extracts the TLS flags (--tls / --tls-ca / --tls-pin / --tls-insecure),
+// removing them from `args`. Any of them implies TLS is on.
+client::TlsOptions extractTlsOptions(std::vector<char*>& args) {
+    client::TlsOptions tls;
+    auto remove = [&](std::size_t i, std::size_t n) {
+        args.erase(args.begin() + static_cast<std::ptrdiff_t>(i),
+                   args.begin() + static_cast<std::ptrdiff_t>(i + n));
+    };
+    for (std::size_t i = 0; i < args.size();) {
+        std::string_view a = args[i];
+        auto value = [&]() -> std::string {
+            if (i + 1 >= args.size()) {
+                throw std::runtime_error(std::string(a) + " requires a value");
+            }
+            return args[i + 1];
+        };
+        if (a == "--tls") {
+            tls.enabled = true;
+            remove(i, 1);
+        } else if (a == "--tls-ca") {
+            tls.enabled = true;
+            tls.verify = net::TlsVerify::CaFile;
+            tls.caFile = value();
+            remove(i, 2);
+        } else if (a == "--tls-pin") {
+            tls.enabled = true;
+            tls.verify = net::TlsVerify::Pin;
+            tls.pinSha256 = value();
+            remove(i, 2);
+        } else if (a == "--tls-insecure") {
+            tls.enabled = true;
+            tls.verify = net::TlsVerify::Insecure;
+            remove(i, 1);
+        } else {
+            ++i;
+        }
+    }
+    return tls;
+}
+
+// Connects to a remote bisond (optionally over TLS), authenticating when
+// credentials are supplied. Passwords come from --username (prompted, or
+// $BISONDB_PASSWORD) or a token (--token or $BISONDB_TOKEN) — never from argv.
 client::BisonClient connectRemote(const std::string& host, uint16_t port,
+                                  const client::TlsOptions& tls,
                                   const std::optional<std::string>& username,
                                   const std::optional<std::string>& token) {
+    client::Credentials creds;
+    bool haveCreds = false;
     if (token) {
-        return client::BisonClient::connect(host, port, client::Credentials{"", "", *token});
-    }
-    if (username) {
-        std::string pw;
+        creds.token = *token;
+        haveCreds = true;
+    } else if (username) {
+        creds.username = *username;
         if (const char* env = std::getenv("BISONDB_PASSWORD"); env != nullptr && env[0] != '\0') {
-            pw = env;
+            creds.password = env;
         } else {
-            pw = readPasswordFromTty("Password for " + *username + ": ");
+            creds.password = readPasswordFromTty("Password for " + *username + ": ");
         }
-        return client::BisonClient::connect(host, port, client::Credentials{*username, pw, ""});
+        haveCreds = true;
+    } else if (const char* tok = std::getenv("BISONDB_TOKEN"); tok != nullptr && tok[0] != '\0') {
+        creds.token = tok;
+        haveCreds = true;
     }
-    if (const char* tok = std::getenv("BISONDB_TOKEN"); tok != nullptr && tok[0] != '\0') {
-        return client::BisonClient::connect(host, port, client::Credentials{"", "", tok});
+    if (haveCreds) {
+        return client::BisonClient::connect(host, port, tls, creds);
     }
-    return client::BisonClient::connect(host, port);
+    return client::BisonClient::connect(host, port, tls);
 }
 
 int cmdDbRemote(client::BisonClient& c, std::string_view verb, const std::string& coll,
@@ -400,6 +450,7 @@ int cmdDb(std::span<char*> argsIn) {
     auto connect = extractConnect(argVec);
     auto username = extractFlag(argVec, "--username");
     auto token = extractFlag(argVec, "--token");
+    client::TlsOptions tls = extractTlsOptions(argVec);
     std::span<char*> args(argVec);
     if (args.size() < 3) {
         throw std::runtime_error("db: expected <verb> <dbdir> <collection> ...");
@@ -410,7 +461,8 @@ int cmdDb(std::span<char*> argsIn) {
     std::span<char*> rest = args.subspan(3);
 
     if (connect) {
-        client::BisonClient c = connectRemote(connect->first, connect->second, username, token);
+        client::BisonClient c =
+            connectRemote(connect->first, connect->second, tls, username, token);
         return cmdDbRemote(c, verb, coll, rest);
     }
 
@@ -565,8 +617,70 @@ int cmdAuth(std::span<char*> args) {
     auth::UserStore store(dir);
     store.createUser(username, password, {auth::Role::Admin});
     std::cout << "admin user '" << username << "' created in " << dir << "\n";
-    std::cerr << "NOTE: the bisond transport is not encrypted yet (no TLS). Use only on\n"
-                 "trusted networks until TLS ships.\n";
+    std::cerr << "NOTE: run bisond with --tls so credentials are encrypted in transit\n"
+                 "(see: bisonc tls gen-cert).\n";
+    return 0;
+}
+
+// `bisonc tls gen-cert --out-dir <dir> [--cn localhost] [--days 365]`
+// Writes cert.pem + key.pem (key created 0600 on POSIX) — the recommended way
+// to set up TLS, over runtime --tls-self-signed.
+int cmdTls(std::span<char*> args) {
+    if (args.empty()) {
+        throw std::runtime_error("tls: expected a subcommand (gen-cert)");
+    }
+    if (std::string_view(args[0]) != "gen-cert") {
+        throw std::runtime_error("tls: unknown subcommand '" + std::string(args[0]) + "'");
+    }
+    std::string outDir;
+    std::string cn = "localhost";
+    int days = 365;
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        std::string_view a = args[i];
+        auto value = [&]() -> std::string {
+            if (i + 1 >= args.size()) {
+                throw std::runtime_error(std::string(a) + " requires a value");
+            }
+            return args[++i];
+        };
+        if (a == "--out-dir") {
+            outDir = value();
+        } else if (a == "--cn") {
+            cn = value();
+        } else if (a == "--days") {
+            days = std::stoi(value());
+        } else {
+            throw std::runtime_error("tls gen-cert: unexpected argument '" + std::string(a) + "'");
+        }
+    }
+    if (outDir.empty()) {
+        throw std::runtime_error("tls gen-cert requires --out-dir <dir>");
+    }
+
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(outDir, ec);
+    net::CertKeyPem ck = net::generateSelfSigned(cn, days);
+
+    fs::path certPath = fs::path(outDir) / "cert.pem";
+    fs::path keyPath = fs::path(outDir) / "key.pem";
+    {
+        std::ofstream cf(certPath, std::ios::binary | std::ios::trunc);
+        if (!cf) {
+            throw std::runtime_error("cannot write " + certPath.string());
+        }
+        cf << ck.certPem;
+    }
+    net::writePrivateKeyFile(keyPath.string(), ck.keyPem);
+
+    std::cout << "wrote " << certPath.string() << "\n"
+              << "wrote " << keyPath.string() << " (private key; keep it secret)\n"
+              << "CN=" << cn << "  valid " << days << " days\n"
+              << "SHA-256 fingerprint: " << net::certFingerprintSha256(ck.certPem) << "\n\n"
+              << "Start the server:\n  bisond --dir <dir> --tls --tls-cert " << certPath.string()
+              << " --tls-key " << keyPath.string() << "\n"
+              << "Connect a client (self-signed -> pin or trust the cert):\n  bisonsh --tls-ca "
+              << certPath.string() << "\n";
     return 0;
 }
 
@@ -594,16 +708,21 @@ int main(int argc, char** argv) {
         if (command == "auth") {
             return cmdAuth(rest);
         }
+        if (command == "tls") {
+            return cmdTls(rest);
+        }
         if (command == "ping" || command == "status") {
             std::vector<char*> argVec(rest.begin(), rest.end());
             auto connect = extractConnect(argVec);
             auto username = extractFlag(argVec, "--username");
             auto token = extractFlag(argVec, "--token");
+            client::TlsOptions tls = extractTlsOptions(argVec);
             if (!connect) {
                 throw std::runtime_error(std::string(command) + " requires --connect host:port");
             }
             // ping/serverStatus work pre-auth; authenticate only if asked.
-            client::BisonClient c = connectRemote(connect->first, connect->second, username, token);
+            client::BisonClient c =
+                connectRemote(connect->first, connect->second, tls, username, token);
             if (command == "ping") {
                 c.ping();
                 std::cout << "ok\n";

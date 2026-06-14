@@ -14,13 +14,17 @@ int usage() {
     std::cerr << "bisonsh " << bisondb::version() << " - BisonDB interactive shell\n\n"
               << "Usage: bisonsh [--connect host:port] [--no-color] [--no-banner]\n"
               << "               [--username <user>] [--token <token>]\n"
+              << "               [--tls] [--tls-ca <pem>] [--tls-pin <sha256>] [--tls-insecure]\n"
               << "               [--eval '<stmt>[; <stmt>...]'] [-f script.bsh]\n\n"
               << "Default server: 127.0.0.1:27027. With --eval, -f, or piped stdin the\n"
               << "shell runs non-interactively and exits non-zero on the first error.\n\n"
               << "Auth: pass --username (you'll be prompted for the password, or set\n"
               << "BISONDB_PASSWORD) or --token (or set BISONDB_TOKEN). NEVER pass a password\n"
-              << "on the command line. Once connected, manage accounts with 'auth ...'.\n"
-              << "NOTE: the transport is not encrypted yet (no TLS) — trusted networks only.\n";
+              << "on the command line. Once connected, manage accounts with 'auth ...'.\n\n"
+              << "TLS: --tls verifies against the system trust store; --tls-ca <pem> trusts a\n"
+              << "specific (self-signed) cert; --tls-pin <sha256> pins a fingerprint;\n"
+              << "--tls-insecure skips verification (dev only, warns). Without --tls the\n"
+              << "connection is unencrypted.\n";
     return 1;
 }
 
@@ -60,6 +64,19 @@ int main(int argc, char** argv) {
             config.username = next();
         } else if (arg == "--token") {
             config.token = next();
+        } else if (arg == "--tls") {
+            config.tls.enabled = true;
+        } else if (arg == "--tls-ca") {
+            config.tls.enabled = true;
+            config.tls.verify = bisondb::net::TlsVerify::CaFile;
+            config.tls.caFile = next();
+        } else if (arg == "--tls-pin") {
+            config.tls.enabled = true;
+            config.tls.verify = bisondb::net::TlsVerify::Pin;
+            config.tls.pinSha256 = next();
+        } else if (arg == "--tls-insecure") {
+            config.tls.enabled = true;
+            config.tls.verify = bisondb::net::TlsVerify::Insecure;
         } else if (arg == "--eval") {
             evalText = next();
         } else if (arg == "-f") {

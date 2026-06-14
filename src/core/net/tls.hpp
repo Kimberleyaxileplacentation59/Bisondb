@@ -127,4 +127,9 @@ CertKeyPem generateSelfSigned(const std::string& cn, int days);
 // SHA-256 fingerprint (lowercase hex, no separators) of a PEM certificate.
 std::string certFingerprintSha256(const std::string& certPem);
 
+// Write a PEM private key to `path`, restricted to the owner: created with mode
+// 0600 on POSIX (no world/group access, even briefly); best-effort on Windows.
+// Throws TlsError on failure.
+void writePrivateKeyFile(const std::string& path, const std::string& keyPem);
+
 } // namespace bisondb::net

@@ -4,9 +4,16 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <future>
+#include <random>
 #include <string>
 #include <vector>
+
+#if !defined(_WIN32)
+    #include <sys/stat.h>
+#endif
 
 using namespace bisondb;
 using namespace bisondb::net;
@@ -102,6 +109,30 @@ TEST_CASE("recvExact reassembles a payload split across TLS records", "[tls]") {
     REQUIRE(client.recvExact(buf) == RecvStatus::Complete);
     writer.get();
     REQUIRE(std::string(buf.begin(), buf.end()) == "AAAABBBBBBCC");
+}
+
+TEST_CASE("writePrivateKeyFile writes a usable key with owner-only perms", "[tls]") {
+    namespace fs = std::filesystem;
+    std::random_device rd;
+    fs::path dir = fs::temp_directory_path() / ("bisondb_keyperm_" + std::to_string(rd()));
+    fs::create_directories(dir);
+    fs::path keyPath = dir / "key.pem";
+
+    CertKeyPem ck = generateSelfSigned("localhost", 30);
+    writePrivateKeyFile(keyPath.string(), ck.keyPem);
+
+    // Content round-trips.
+    std::ifstream in(keyPath, std::ios::binary);
+    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    REQUIRE(content == ck.keyPem);
+
+#if !defined(_WIN32)
+    struct stat st{};
+    REQUIRE(::stat(keyPath.string().c_str(), &st) == 0);
+    REQUIRE((st.st_mode & 0777) == 0600); // owner rw only
+#endif
+    std::error_code ec;
+    fs::remove_all(dir, ec);
 }
 
 TEST_CASE("wrong pin is rejected after the handshake", "[tls]") {
