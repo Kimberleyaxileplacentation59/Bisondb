@@ -1,4 +1,5 @@
 #include "client/client.hpp"
+#include "core/auth/user_store.hpp"
 #include "core/bson_decoder.hpp"
 #include "core/bson_encoder.hpp"
 #include "core/json_parser.hpp"
@@ -6,9 +7,11 @@
 #include "core/platform.hpp"
 #include "core/query/index_manager.hpp"
 #include "core/query/query.hpp"
+#include "core/secure_input.hpp"
 #include "core/version.hpp"
 
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -50,10 +53,16 @@ int usage(std::ostream& os) {
        << "  bisonc db drop-index   <dbdir> <coll> <field>\n"
        << "  bisonc db indexes      <dbdir> <coll>\n"
        << "\n"
+       << "  bisonc auth create-admin --dir <dbdir> --username <u>\n"
+       << "      Create an admin offline (password from BISONDB_ADMIN_PASSWORD or prompt).\n"
+       << "\n"
        << "Every db subcommand accepts --connect host:port to talk to a running bisond\n"
        << "instead of opening <dbdir> locally (the dbdir argument is then ignored).\n"
        << "  bisonc ping   --connect host:port\n"
        << "  bisonc status --connect host:port\n"
+       << "\n"
+       << "Remote auth: add --username <u> (password from prompt or $BISONDB_PASSWORD) or\n"
+       << "--token <t> (or $BISONDB_TOKEN). The transport is NOT encrypted yet (no TLS).\n"
        << "\n"
        << "to-json reads one or more concatenated BSON documents and writes one JSON\n"
        << "document per line (JSON Lines), or indented documents with --pretty.\n"
@@ -241,6 +250,47 @@ std::optional<std::pair<std::string, uint16_t>> extractConnect(std::vector<char*
     return std::nullopt;
 }
 
+// Extracts "--flag <value>" (removing the pair) and returns the value if present.
+std::optional<std::string> extractFlag(std::vector<char*>& args, const char* flag) {
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        if (std::string_view(args[i]) != flag) {
+            continue;
+        }
+        if (i + 1 >= args.size()) {
+            throw std::runtime_error(std::string(flag) + " requires a value");
+        }
+        std::string value = args[i + 1];
+        args.erase(args.begin() + static_cast<std::ptrdiff_t>(i),
+                   args.begin() + static_cast<std::ptrdiff_t>(i) + 2);
+        return value;
+    }
+    return std::nullopt;
+}
+
+// Connects to a remote bisond, authenticating when credentials are supplied.
+// Passwords come from --username (prompted, or $BISONDB_PASSWORD) or a token
+// (--token or $BISONDB_TOKEN) — never from a CLI argument.
+client::BisonClient connectRemote(const std::string& host, uint16_t port,
+                                  const std::optional<std::string>& username,
+                                  const std::optional<std::string>& token) {
+    if (token) {
+        return client::BisonClient::connect(host, port, client::Credentials{"", "", *token});
+    }
+    if (username) {
+        std::string pw;
+        if (const char* env = std::getenv("BISONDB_PASSWORD"); env != nullptr && env[0] != '\0') {
+            pw = env;
+        } else {
+            pw = readPasswordFromTty("Password for " + *username + ": ");
+        }
+        return client::BisonClient::connect(host, port, client::Credentials{*username, pw, ""});
+    }
+    if (const char* tok = std::getenv("BISONDB_TOKEN"); tok != nullptr && tok[0] != '\0') {
+        return client::BisonClient::connect(host, port, client::Credentials{"", "", tok});
+    }
+    return client::BisonClient::connect(host, port);
+}
+
 int cmdDbRemote(client::BisonClient& c, std::string_view verb, const std::string& coll,
                 std::span<char*> rest) {
     if (verb == "import") {
@@ -348,6 +398,8 @@ int cmdDbRemote(client::BisonClient& c, std::string_view verb, const std::string
 int cmdDb(std::span<char*> argsIn) {
     std::vector<char*> argVec(argsIn.begin(), argsIn.end());
     auto connect = extractConnect(argVec);
+    auto username = extractFlag(argVec, "--username");
+    auto token = extractFlag(argVec, "--token");
     std::span<char*> args(argVec);
     if (args.size() < 3) {
         throw std::runtime_error("db: expected <verb> <dbdir> <collection> ...");
@@ -358,7 +410,7 @@ int cmdDb(std::span<char*> argsIn) {
     std::span<char*> rest = args.subspan(3);
 
     if (connect) {
-        client::BisonClient c = client::BisonClient::connect(connect->first, connect->second);
+        client::BisonClient c = connectRemote(connect->first, connect->second, username, token);
         return cmdDbRemote(c, verb, coll, rest);
     }
 
@@ -464,6 +516,60 @@ int cmdDb(std::span<char*> argsIn) {
     throw std::runtime_error("db: unknown verb '" + std::string(verb) + "'");
 }
 
+// ---- bisonc auth (offline user administration) -------------------------
+
+// `bisonc auth create-admin --dir <dbdir> --username <u>`
+// Creates an admin user directly in <dbdir>/__auth.bsd with no running server —
+// the recommended way to seed (or recover) an admin. The password comes from
+// BISONDB_ADMIN_PASSWORD if set, else a no-echo prompt (entered twice).
+int cmdAuth(std::span<char*> args) {
+    if (args.empty()) {
+        throw std::runtime_error("auth: expected a subcommand (create-admin)");
+    }
+    std::string_view verb = args[0];
+    if (verb != "create-admin") {
+        throw std::runtime_error("auth: unknown subcommand '" + std::string(verb) + "'");
+    }
+
+    std::string dir;
+    std::string username;
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        std::string_view a = args[i];
+        if (a == "--dir" && i + 1 < args.size()) {
+            dir = args[++i];
+        } else if (a == "--username" && i + 1 < args.size()) {
+            username = args[++i];
+        } else {
+            throw std::runtime_error("auth create-admin: unexpected argument '" + std::string(a) +
+                                     "'");
+        }
+    }
+    if (dir.empty() || username.empty()) {
+        throw std::runtime_error("auth create-admin requires --dir <dbdir> and --username <name>");
+    }
+
+    std::string password;
+    if (const char* env = std::getenv("BISONDB_ADMIN_PASSWORD"); env != nullptr && env[0] != '\0') {
+        password = env;
+    } else {
+        password = readPasswordFromTty("New admin password: ");
+        std::string confirm = readPasswordFromTty("Confirm password: ");
+        if (password != confirm) {
+            throw std::runtime_error("passwords do not match");
+        }
+    }
+    if (password.empty()) {
+        throw std::runtime_error("password must not be empty");
+    }
+
+    auth::UserStore store(dir);
+    store.createUser(username, password, {auth::Role::Admin});
+    std::cout << "admin user '" << username << "' created in " << dir << "\n";
+    std::cerr << "NOTE: the bisond transport is not encrypted yet (no TLS). Use only on\n"
+                 "trusted networks until TLS ships.\n";
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -485,13 +591,19 @@ int main(int argc, char** argv) {
         if (command == "db") {
             return cmdDb(rest);
         }
+        if (command == "auth") {
+            return cmdAuth(rest);
+        }
         if (command == "ping" || command == "status") {
             std::vector<char*> argVec(rest.begin(), rest.end());
             auto connect = extractConnect(argVec);
+            auto username = extractFlag(argVec, "--username");
+            auto token = extractFlag(argVec, "--token");
             if (!connect) {
                 throw std::runtime_error(std::string(command) + " requires --connect host:port");
             }
-            client::BisonClient c = client::BisonClient::connect(connect->first, connect->second);
+            // ping/serverStatus work pre-auth; authenticate only if asked.
+            client::BisonClient c = connectRemote(connect->first, connect->second, username, token);
             if (command == "ping") {
                 c.ping();
                 std::cout << "ok\n";
