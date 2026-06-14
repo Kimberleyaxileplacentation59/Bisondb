@@ -362,6 +362,13 @@ clang-format --dry-run --Werror $(find src tests -name "*.cpp" -o -name "*.hpp")
 
 CI will fail the lint job if any file is not formatted correctly.
 
+## Releases
+
+Latest: **v1.2.0** (TLS transport encryption). Prebuilt, statically linked Windows x64
+binaries are attached to each [GitHub release](https://github.com/Abdullah-Masood-05/Bisondb/releases);
+the full version history is on the
+[changelog](https://abdullah-masood-05.github.io/bisondb-site/changelog/).
+
 ## License
 
 BisonDB (the engine — `bisond`, `bisonsh`, `bisonc`, and the `bisondb_core` library) is
