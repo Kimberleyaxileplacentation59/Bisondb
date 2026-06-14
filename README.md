@@ -276,14 +276,43 @@ which indexes them as null) are skipped and counted in the index's build stats.
 
 ## Security
 
-> 🔓 **No TLS yet — credentials and data are sent UNENCRYPTED.** Authentication is
-> implemented, but the transport is plain TCP. Anyone able to observe the connection can
-> read passwords, tokens, and documents. **Use only on trusted networks (loopback/LAN)
-> until the TLS phase ships.** TLS is the next planned phase.
+BisonDB now has an **encrypted, authenticated transport** for single-node use: TLS on the
+wire plus user/role authentication. It is still single-node (no replication), and
+`--tls-insecure` / `--no-auth` escape hatches exist for development — so it is not a managed
+service, but credentials and data are no longer exposed in clear text when TLS is on.
 
-**Authentication (wire protocol v2).** Every connection must authenticate before any data
-command; the full handshake, state machine, and error codes are in
-[docs/protocol.md](docs/protocol.md). Highlights:
+### TLS (transport encryption)
+
+> ✅ Enable TLS with `--tls` and a certificate. Without `--tls` the transport is plain TCP
+> (clear text) — fine for loopback dev, not for a network.
+
+```bash
+# 1. Make a cert/key (self-signed; key file is 0600). Use a real CA cert in production.
+bisonc tls gen-cert --out-dir ./tls --cn localhost
+
+# 2. Start the server with TLS + an admin.
+BISONDB_ADMIN_PASSWORD=choose-one bisond --dir data/db \
+    --tls --tls-cert ./tls/cert.pem --tls-key ./tls/key.pem --init-admin admin
+
+# 3. Connect, trusting the self-signed cert (or pin its fingerprint).
+bisonsh --connect localhost:27027 --tls-ca ./tls/cert.pem --username admin
+```
+
+- **Library:** Mbed-TLS 3.6 (vendored via FetchContent; keeps the binaries DLL-free).
+  TLS 1.2 (ECDHE + AES-GCM); TLS 1.3 is deferred (a config wrinkle in this build).
+- **Server cert:** `--tls-cert`/`--tls-key` (operator-provided), or `--tls-self-signed` to
+  generate one at startup and print its SHA-256 fingerprint for pinning.
+- **Client verification (secure by default):** the default verifies the server cert against
+  the OS trust store **and** the hostname. `--tls-ca <pem>` trusts a specific (self-signed)
+  cert; `--tls-pin <sha256>` pins a fingerprint; `--tls-insecure` skips verification (dev
+  only — it prints a loud warning and the banner shows *UNVERIFIED*).
+- Private keys are never logged. A mismatched plaintext/TLS pairing fails fast with a
+  message telling you to add or drop `--tls`.
+
+### Authentication (wire protocol v2)
+
+Every connection must authenticate before any data command; the full handshake, state
+machine, and error codes are in [docs/protocol.md](docs/protocol.md). Highlights:
 
 - **Users & roles.** Three roles: `read` (find/explain/list/dbStats), `readWrite` (all data
   commands), `admin` (everything + user management + shutdown). Users live in a hidden

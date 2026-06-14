@@ -2,10 +2,11 @@
 
 BisonDB speaks a minimal framed-BSON protocol over TCP. Default port: **27027**.
 
-> ⚠️ **No TLS yet.** Authentication exists (v2), but the transport is **not encrypted**.
-> Usernames, passwords, tokens, and all data travel in **clear text** over the socket.
-> Run BisonDB on loopback or a trusted LAN only until the TLS phase ships. Anyone who can
-> sniff the connection can read credentials and data.
+> 🔒 **TLS available.** Run `bisond --tls` (with a cert/key) to encrypt the transport; the
+> framing and commands below are then carried inside a TLS 1.2 session, unchanged. Without
+> `--tls` the socket is plain TCP (clear text) — fine for loopback dev, not for a network.
+> See the [Security page](https://abdullah-masood-05.github.io/bisondb-site/reference/security)
+> for the cert options and client verification modes.
 
 **Protocol version history.** `serverStatus.protocolVersion` is **2**. v2 added the
 authentication handshake and gates every non-handshake command behind it. A v1 client
