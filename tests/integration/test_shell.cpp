@@ -1,6 +1,8 @@
 // Shell integration tests: a real in-process server plus the Shell REPL
 // driven through stringstreams (scripted mode, --eval, history).
 
+#include "client/client.hpp"
+#include "core/crypto/crypto.hpp"
 #include "server/server.hpp"
 #include "shell/banner.hpp"
 #include "shell/printer.hpp"
@@ -8,6 +10,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -34,6 +37,7 @@ struct ShellFixture {
         config.port = 0;
         config.threads = 8;
         config.quiet = true;
+        config.noAuth = true; // shell-path tests; auth covered in test_auth_server.cpp
         srv = std::make_unique<server::Server>(std::move(config));
         srv->start();
     }
@@ -213,6 +217,90 @@ TEST_CASE("startup banner shows once interactively, never in scripted modes",
         REQUIRE(out.str().find("prairie is open") == std::string::npos);
         REQUIRE(out.str().find("█") == std::string::npos); // no block chars
     }
+}
+
+TEST_CASE("shell auto-authenticates, whoami, and enforces roles", "[integration][shell][auth]") {
+    std::random_device rd;
+    fs::path dir = fs::temp_directory_path() / ("bisondb_shauth_" + std::to_string(rd()));
+    fs::remove_all(dir);
+
+#if defined(_WIN32)
+    _putenv_s("BISONDB_ADMIN_PASSWORD", "rootpw");
+#else
+    setenv("BISONDB_ADMIN_PASSWORD", "rootpw", 1);
+#endif
+    server::ServerConfig config;
+    config.dir = dir.string();
+    config.port = 0;
+    config.quiet = true;
+    config.throttleAuth = false;
+    config.initAdminUser = "root";
+    crypto::KdfParams kdf;
+    kdf.memoryKiB = 64;
+    kdf.passes = 1;
+    kdf.lanes = 1;
+    config.kdf = kdf;
+    auto srv = std::make_unique<server::Server>(std::move(config));
+    srv->start();
+#if defined(_WIN32)
+    _putenv_s("BISONDB_ADMIN_PASSWORD", "");
+#else
+    unsetenv("BISONDB_ADMIN_PASSWORD");
+#endif
+
+    // Pre-create a read-only user with a direct client (avoids interactive
+    // password prompts, which read the real OS stdin, not the injected stream).
+    {
+        client::BisonClient admin = client::BisonClient::connect(
+            "127.0.0.1", srv->port(), client::Credentials{"root", "rootpw", ""}, 2000);
+        admin.createUser("reader", "readerpw", {"read"});
+    }
+
+    auto cfgFor = [&](const std::string& user, const std::string& pw) {
+        ShellConfig c;
+        c.host = "127.0.0.1";
+        c.port = srv->port();
+        c.color = false;
+        c.interactive = false;
+        c.username = user;
+        c.password = pw; // auto-auth, no prompt
+        return c;
+    };
+
+    // Admin shell: auto-auth, whoami, and a write all succeed.
+    {
+        std::istringstream in;
+        std::ostringstream out, err;
+        Shell shell(cfgFor("root", "rootpw"), in, out, err);
+        int rc = shell.evalString("auth whoami; db.t.insertOne({x: 1}); db.t.count()");
+        INFO("stderr: " << err.str());
+        REQUIRE(rc == 0);
+        REQUIRE_THAT(out.str(), ContainsSubstring("root [admin]"));
+        REQUIRE_THAT(out.str(), ContainsSubstring("\"insertedCount\": 1"));
+    }
+
+    // Reader shell: find works, insert is Forbidden.
+    {
+        std::istringstream in;
+        std::ostringstream out, err;
+        Shell shell(cfgFor("reader", "readerpw"), in, out, err);
+        REQUIRE(shell.executeStatement("db.t.find({})"));
+        REQUIRE_FALSE(shell.executeStatement("db.t.insertOne({y: 2})"));
+        REQUIRE_THAT(err.str(), ContainsSubstring("E[Forbidden]"));
+    }
+
+    // Wrong password surfaces as an auth error on first use.
+    {
+        std::istringstream in;
+        std::ostringstream out, err;
+        Shell shell(cfgFor("root", "WRONG"), in, out, err);
+        REQUIRE_FALSE(shell.executeStatement("db.t.count()"));
+        REQUIRE_THAT(err.str(), ContainsSubstring("E[AuthFailed]"));
+    }
+
+    srv->stop();
+    std::error_code ec;
+    fs::remove_all(dir, ec);
 }
 
 TEST_CASE("history persists, reloads, and caps", "[integration][shell]") {

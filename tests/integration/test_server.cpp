@@ -35,6 +35,9 @@ struct ServerFixture {
         config.port = 0; // ephemeral
         config.threads = 16;
         config.quiet = true;
+        // These tests exercise data-command paths; auth is covered separately
+        // in test_auth_server.cpp. Run them in the dev escape-hatch mode.
+        config.noAuth = true;
         if (maxMessageSize != 0) {
             config.maxMessageSize = maxMessageSize;
         }
@@ -350,6 +353,7 @@ TEST_CASE("graceful shutdown leaves clean files", "[integration]") {
         config.port = 0;
         config.threads = 8;
         config.quiet = true;
+        config.noAuth = true;
         server::Server srv(std::move(config));
         srv.start();
 
